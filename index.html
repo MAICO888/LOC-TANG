@@ -1,50 +1,3 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>LOC-TANG — Gộp & Phân loại B→D</title>
-<style>
-:root{--blue:#0b66c3;--bg:#f3f7fb;--muted:#666}
-body{font-family:Arial,Helvetica,sans-serif;background:var(--bg);margin:16px;color:#123}
-h1{color:var(--blue);text-align:center;margin-bottom:8px}
-#drop{border:2px dashed var(--blue);background:#eaf3ff;padding:20px;border-radius:10px;text-align:center;cursor:pointer}
-#drop.drag{background:#dfeffd}
-.controls{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
-input[type=file]{display:none}
-button{background:var(--blue);color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}
-button.ghost{background:#fff;color:var(--blue);border:1px solid #cfe4ff}
-.small{font-size:13px;color:var(--muted)}
-#tableWrap{margin-top:14px}
-table{width:100%;border-collapse:collapse;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-th,td{padding:8px;border:1px solid #e6eef9;text-align:center;font-size:13px}
-thead th{background:var(--blue);color:#fff;position:sticky;top:0}
-.actions{display:flex;gap:8px;align-items:center;margin-top:10px}
-@media(max-width:700px){ .controls{flex-direction:column;align-items:flex-start} .actions{flex-direction:column} }
-</style>
-</head>
-<body>
-
-<h1>LỌC TẦNG</h1>
-
-<div id="drop" title="Kéo & thả file Excel vào đây">
-  <div style="font-size:16px">📂 Kéo & Thả Nhiều File Excel hoặc bấm để chọn</div>
-  <div class="small" style="margin-top:6px">Dữ liệu chính: hàng từ <b>2</b> trở xuống — A ← C, B ← I, C ← O. Cột D tự phân loại theo giá trị B. Loại bỏ dòng C=D. Trùng A giữ dòng có B lớn nhất. Xuất Excel chỉ A & D.</div>
-  <input id="fileInput" type="file" accept=".xlsx,.xls" multiple />
-</div>
-
-<div class="controls">
-  <button id="btnClear" class="ghost">🧹 Xóa bảng / Tải lại</button>
-  <div style="flex:1"></div>
-  <div class="small">Chạy online qua CDN.</div>
-</div>
-
-<div class="actions" id="actions" style="display:none">
-  <button id="btnExport">⬇️ Xuất LOC-TANG_Ketqua.xlsx (A & D)</button>
-</div>
-
-<div id="tableWrap"></div>
-
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
 <script>
@@ -56,6 +9,7 @@ const tableWrap = document.getElementById('tableWrap');
 const actions = document.getElementById('actions');
 
 let mergedData = [];
+let filteredData = []; // Dữ liệu sau khi lọc
 
 drop.addEventListener('click', ()=> fileInput.click());
 drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.classList.add('drag'); });
@@ -79,9 +33,9 @@ function handleFiles(fileList){
         const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
         for(let i=1;i<rows.length;i++){
           const row=rows[i];
-          const a=row[2]||'';
-          const b=row[8]||'';
-          const c=row[14]||'';
+          const a=row[2]||''; // Cột C -> A
+          const b=row[8]||''; // Cột I -> B
+          const c=row[14]||''; // Cột O -> C
           if(a||b||c) mergedData.push({A:a,B:b,C:c});
         }
       } catch(err){ console.error(err); alert('Lỗi đọc file '+file.name); }
@@ -110,16 +64,13 @@ function classifyB(b){
 }
 
 function finalizeAndRender(){
-  // Gán D trước để loại bỏ C==D sau đó
   mergedData = mergedData.map(r=>{
     const D = classifyB(r.B);
     return {...r, D};
   });
 
-  // Loại bỏ dòng C == D
   mergedData = mergedData.filter(r=>String(r.C).trim()!==String(r.D).trim());
 
-  // 👉 Lọc trùng A, giữ dòng có B lớn nhất
   const mapA = new Map();
   mergedData.forEach(r=>{
     const key = r.A;
@@ -129,35 +80,79 @@ function finalizeAndRender(){
     }
   });
 
-  // Chuyển về dạng chỉ A & D để render
   mergedData = Array.from(mapA.values()).map(o=>({A:o.A,D:o.D}));
-
-  renderTable(mergedData);
+  filteredData = mergedData; // ban đầu hiển thị toàn bộ
+  renderTable(filteredData);
 }
-
 
 function renderTable(rows){
-  if(!rows.length){ tableWrap.innerHTML='<div class="small">Không có dữ liệu để hiển thị.</div>'; actions.style.display='none'; return; }
-  let html='<table><thead><tr><th>STT</th><th>A</th><th>D</th></tr></thead><tbody>';
+  if(!rows.length){ 
+    tableWrap.innerHTML='<div class="small">Không có dữ liệu để hiển thị.</div>'; 
+    actions.style.display='none'; 
+    return; 
+  }
+
+  // Thêm input lọc
+  let html = `
+  <div class="controls" style="margin-bottom:8px">
+    <input id="filterA" placeholder="🔍 Lọc cột A..." style="padding:6px 8px;border-radius:6px;border:1px solid #ccc;flex:1">
+    <input id="filterD" placeholder="🔍 Lọc cột D..." style="padding:6px 8px;border-radius:6px;border:1px solid #ccc;flex:1">
+  </div>
+  `;
+
+  html += '<table id="dataTable"><thead><tr><th>STT</th><th>A</th><th>D</th></tr></thead><tbody>';
   rows.forEach((r,i)=>{
-    html+='<tr>';
-    html+=`<td>${i+1}</td><td>${escapeHtml(r.A)}</td><td>${escapeHtml(r.D)}</td>`;
-    html+='</tr>';
+    html+=`<tr><td>${i+1}</td><td class="colA">${escapeHtml(r.A)}</td><td>${escapeHtml(r.D)}</td></tr>`;
   });
-  html+='</tbody></table>'; tableWrap.innerHTML=html; actions.style.display='flex';
+  html+='</tbody></table>'; 
+  tableWrap.innerHTML=html; 
+  actions.style.display='flex';
+
+  // Sự kiện lọc
+  const filterA = document.getElementById('filterA');
+  const filterD = document.getElementById('filterD');
+  filterA.addEventListener('input', applyFilters);
+  filterD.addEventListener('input', applyFilters);
+
+  // Double click đổi màu
+  document.querySelectorAll('#dataTable .colA').forEach(td=>{
+    td.addEventListener('dblclick', ()=>{
+      const tr = td.parentElement;
+      tr.style.backgroundColor = 
+        tr.style.backgroundColor === 'orange' ? '' : 'orange';
+    });
+  });
 }
 
-// Xuất Excel chỉ A & D
+function applyFilters(){
+  const valA = document.getElementById('filterA').value.trim().toLowerCase();
+  const valD = document.getElementById('filterD').value.trim().toLowerCase();
+  filteredData = mergedData.filter(r=>{
+    const aMatch = r.A.toLowerCase().includes(valA);
+    const dMatch = r.D.toLowerCase().includes(valD);
+    return aMatch && dMatch;
+  });
+  renderTable(filteredData);
+}
+
 btnExport.addEventListener('click', ()=>{
-  if(!mergedData.length){ alert('Không có dữ liệu để xuất'); return; }
+  if(!filteredData.length){ alert('Không có dữ liệu để xuất'); return; }
   const out=[['A','D']];
-  mergedData.forEach(r=> out.push([r.A,r.D]));
+  filteredData.forEach(r=> out.push([r.A,r.D]));
   const ws=XLSX.utils.aoa_to_sheet(out);
-  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'KetQua'); XLSX.writeFile(wb,'LOC-TANG_Ketqua.xlsx');
+  const wb=XLSX.utils.book_new(); 
+  XLSX.utils.book_append_sheet(wb,ws,'KetQua'); 
+  XLSX.writeFile(wb,'LOC-TANG_Ketqua.xlsx');
 });
 
-function escapeHtml(s){ return s===null||s===undefined?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function clearAll(){ if(!confirm('Bạn có muốn xóa dữ liệu hiện tại?')) return; mergedData=[]; tableWrap.innerHTML=''; actions.style.display='none'; fileInput.value=''; }
+function escapeHtml(s){ 
+  return s===null||s===undefined?'':String(s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); 
+}
+
+function clearAll(){ 
+  if(!confirm('Bạn có muốn xóa dữ liệu hiện tại?')) return; 
+  mergedData=[]; filteredData=[];
+  tableWrap.innerHTML=''; actions.style.display='none'; fileInput.value=''; 
+}
 </script>
-</body>
-</html>
