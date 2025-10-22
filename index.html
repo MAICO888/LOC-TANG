@@ -30,7 +30,7 @@ thead th{background:var(--blue);color:#fff;position:sticky;top:0}
 
 <div id="drop" title="Kéo & thả file Excel vào đây">
   <div style="font-size:16px">📂 Kéo & Thả Nhiều File Excel hoặc bấm để chọn</div>
-  <div class="small" style="margin-top:6px">Dữ liệu chính: hàng từ <b>2</b> trở xuống — A ← C, B ← I, C ← O. Cột D tự phân loại theo giá trị B. Loại bỏ dòng C=D. Trùng A giữ dòng có B lớn nhất. Xuất Excel chỉ A & D.</div>
+  <div class="small" style="margin-top:6px">Hàng từ <b>2</b> trở xuống — A ← C, B ← I, C ← O. Cột D tự phân loại theo giá trị B. Trùng A giữ dòng có B lớn nhất. Xuất Excel chỉ A & D.</div>
   <input id="fileInput" type="file" accept=".xlsx,.xls" multiple />
 </div>
 
@@ -42,12 +42,12 @@ thead th{background:var(--blue);color:#fff;position:sticky;top:0}
 
 <div class="actions" id="actions" style="display:none">
   <button id="btnExport">⬇️ Xuất LOC-TANG_Ketqua.xlsx (A & D)</button>
-  <button id="btnExportHighlighted" class="ghost" title="Xuất những hàng đang được tô màu">⬇️ Xuất hàng tô màu</button>
+  <button id="btnExportHighlighted" class="ghost" title="Xuất hàng tô màu">⬇️ Xuất hàng tô màu</button>
 </div>
 
 <div id="tableWrap"></div>
 
-<!-- SheetJS CDN (phải load trước script chính) -->
+<!-- SheetJS CDN -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
 <script>
@@ -59,9 +59,9 @@ const btnExportHighlighted = document.getElementById('btnExportHighlighted');
 const tableWrap = document.getElementById('tableWrap');
 const actions = document.getElementById('actions');
 
-let mergedData = [];    // toàn bộ dữ liệu A & D sau xử lý
-let filteredData = [];  // dữ liệu đang hiển thị (sau lọc)
-let highlightedSet = new Set(); // lưu giá trị A của các hàng tô màu (dùng để export)
+let mergedData = [];
+let filteredData = [];
+let highlightedSet = new Set();
 
 drop.addEventListener('click', ()=> fileInput.click());
 drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.classList.add('drag'); });
@@ -88,9 +88,9 @@ function handleFiles(fileList){
         const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
         for(let i=1;i<rows.length;i++){
           const row=rows[i];
-          const a=row[2]||''; // C -> A (index 2)
-          const b=row[8]||''; // I -> B (index 8)
-          const c=row[14]||''; // O -> C (index 14)
+          const a=row[2]||''; 
+          const b=row[8]||''; 
+          const c=row[14]||''; 
           if(a||b||c) mergedData.push({A:a,B:b,C:c});
         }
       } catch(err){ console.error(err); alert('Lỗi đọc file '+file.name); }
@@ -100,7 +100,6 @@ function handleFiles(fileList){
   });
 }
 
-// Phân loại cột B -> D (giữ nguyên chức năng cũ)
 function classifyB(b){
   const val = parseFloat(String(b).replace(/,/g,''))||0;
   if(val<100000) return '默认层';
@@ -119,16 +118,9 @@ function classifyB(b){
 }
 
 function finalizeAndRender(){
-  // Gán D
-  mergedData = mergedData.map(r=>{
-    const D = classifyB(r.B);
-    return {...r, D};
-  });
-
-  // Loại bỏ C == D
+  mergedData = mergedData.map(r=>({...r, D: classifyB(r.B)}));
   mergedData = mergedData.filter(r=> String(r.C).trim() !== String(r.D).trim() );
 
-  // Lọc trùng A giữ B lớn nhất
   const mapA = new Map();
   mergedData.forEach(r=>{
     const key = String(r.A);
@@ -150,36 +142,41 @@ function renderTable(rows){
     return;
   }
 
-  // HTML: 2 input lọc + bảng
   let html = `
   <div class="controls" style="margin-bottom:8px">
-    <input id="filterA" placeholder="🔍 Lọc cột A..." style="padding:6px 8px;border-radius:6px;border:1px solid #ccc;flex:1">
-    <input id="filterD" placeholder="🔍 Lọc cột D..." style="padding:6px 8px;border-radius:6px;border:1px solid #ccc;flex:1">
+    <input id="filterAll" placeholder="🔍 Tìm kiếm A hoặc D..." style="padding:6px 8px;border-radius:6px;border:1px solid #ccc;flex:1">
+    <button id="btnResetFilter" class="ghost" title="Hiện lại tất cả">🔄 Hiện lại tất cả</button>
   </div>
   `;
-
   html += '<table id="dataTable"><thead><tr><th>STT</th><th>A</th><th>D</th></tr></thead><tbody>';
   rows.forEach((r,i)=>{
-    // Dùng data-key để dễ xác định khi export/toggle
     const safeA = escapeHtml(r.A);
     const safeD = escapeHtml(r.D);
-    html += `<tr data-key="${escapeHtml(String(r.A))}"><td>${i+1}</td><td class="colA">${safeA}</td><td class="colD">${safeD}</td></tr>`;
+    html += `<tr data-key="${escapeHtml(String(r.A))}"><td>${i+1}</td><td class="colA">${safeA}</td><td>${safeD}</td></tr>`;
   });
   html += '</tbody></table>';
   tableWrap.innerHTML = html;
   actions.style.display='flex';
 
-  // Gắn event lọc
-  const filterA = document.getElementById('filterA');
-  const filterD = document.getElementById('filterD');
-  filterA.addEventListener('input', applyFilters);
-  filterD.addEventListener('input', applyFilters);
+  const filterAll = document.getElementById('filterAll');
+  const btnReset = document.getElementById('btnResetFilter');
 
-  // Gắn double-click: toggle class .highlight trên <tr>
+  filterAll.addEventListener('input', ()=>{
+    const val = filterAll.value.trim().toLowerCase();
+    if(val === '') {
+      filteredData = mergedData.slice();
+      renderTable(filteredData);
+    } else {
+      applyFilterAll(val);
+    }
+  });
+
+  btnReset.addEventListener('click', resetFilter);
+
   document.querySelectorAll('#dataTable .colA').forEach(td=>{
-    td.addEventListener('dblclick', (ev)=>{
+    td.addEventListener('dblclick', ()=>{
       const tr = td.parentElement;
-      const key = String(tr.getAttribute('data-key') || '');
+      const key = tr.getAttribute('data-key') || '';
       if(tr.classList.contains('highlight')){
         tr.classList.remove('highlight');
         highlightedSet.delete(key);
@@ -190,7 +187,6 @@ function renderTable(rows){
     });
   });
 
-  // Khi render mới, nếu có A đã highlight trước đó thì set lại class
   if(highlightedSet.size){
     document.querySelectorAll('#dataTable tbody tr').forEach(tr=>{
       const key = String(tr.getAttribute('data-key') || '');
@@ -199,20 +195,20 @@ function renderTable(rows){
   }
 }
 
-function applyFilters(){
-  const valA = String(document.getElementById('filterA').value || '').trim().toLowerCase();
-  const valD = String(document.getElementById('filterD').value || '').trim().toLowerCase();
+function applyFilterAll(val){
   filteredData = mergedData.filter(r=>{
     const aStr = String(r.A || '').toLowerCase();
     const dStr = String(r.D || '').toLowerCase();
-    const aMatch = aStr.includes(valA);
-    const dMatch = dStr.includes(valD);
-    return aMatch && dMatch;
+    return aStr.includes(val) || dStr.includes(val);
   });
   renderTable(filteredData);
 }
 
-// Xuất dữ liệu đang hiển thị
+function resetFilter(){
+  filteredData = mergedData.slice();
+  renderTable(filteredData);
+}
+
 btnExport.addEventListener('click', ()=>{
   if(!filteredData.length){ alert('Không có dữ liệu để xuất'); return; }
   const out = [['A','D']];
@@ -223,15 +219,13 @@ btnExport.addEventListener('click', ()=>{
   XLSX.writeFile(wb,'LOC-TANG_Ketqua.xlsx');
 });
 
-// Xuất những hàng đang được tô màu
 btnExportHighlighted.addEventListener('click', ()=>{
   if(highlightedSet.size === 0){ alert('Chưa có hàng nào được tô màu.'); return; }
-  // Lấy các hàng trong mergedData có A thuộc highlightedSet
   const out = [['A','D']];
   mergedData.forEach(r=>{
     if(highlightedSet.has(String(r.A))) out.push([r.A, r.D]);
   });
-  if(out.length===1){ alert('Không tìm thấy hàng tô màu trong dữ liệu đã xử lý.'); return; }
+  if(out.length===1){ alert('Không tìm thấy hàng tô màu.'); return; }
   const ws = XLSX.utils.aoa_to_sheet(out);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'KetQua_Highlighted');
